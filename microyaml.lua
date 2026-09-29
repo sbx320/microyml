@@ -33,6 +33,33 @@ local function trim(s)
   return s:match("^%s*(.-)%s*$")
 end
 
+-- strip a trailing comment: '#' only starts a comment when it is outside
+-- quotes and at the start of the line or preceded by whitespace
+local function strip_comment(s)
+  local quote = nil
+  local i = 1
+  while i <= #s do
+    local c = s:sub(i, i)
+    if quote then
+      if c == "\\" then
+        i = i + 1 -- skip escaped char
+      elseif c == quote then
+        if quote == "'" and s:sub(i + 1, i + 1) == "'" then
+          i = i + 1 -- '' is an escaped quote inside single quotes
+        else
+          quote = nil
+        end
+      end
+    elseif (c == '"' or c == "'") and (i == 1 or s:sub(i - 1, i - 1):match("[%s:%-]")) then
+      quote = c
+    elseif c == "#" and (i == 1 or s:sub(i - 1, i - 1):match("%s")) then
+      return s:sub(1, i - 1)
+    end
+    i = i + 1
+  end
+  return s
+end
+
 local function parse_value(v)
   v = trim(v)
 
@@ -71,7 +98,7 @@ end
 
 local function detect_indent(lines, start_idx, base_indent)
   for i = start_idx, #lines do
-    local line = lines[i]:gsub("#.*$", "") -- strip comments (we don't need them :p)
+    local line = strip_comment(lines[i])
     if not line:match("^%s*$") then
       local ind = #line:match("^(%s*)")
       if ind > base_indent then
@@ -84,7 +111,7 @@ end
 
 local function peek_next_nonempty(lines, start_idx)
   for i = start_idx, #lines do
-    local line = lines[i]:gsub("#.*$", "")
+    local line = strip_comment(lines[i])
     if not line:match("^%s*$") then
       return line, i
     end
@@ -103,7 +130,7 @@ local function parse_yaml(lines, i, indent, anchors)
     local line = lines[i]
     local orig_line = line
     -- strip comments
-    line = line:gsub("#.*$", "")
+    line = strip_comment(line)
 
     if line:match("^%s*$") then
       i = i + 1
